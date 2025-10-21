@@ -198,7 +198,7 @@ const ChatRoom = () => {
   }, [socket]);
 
   return (
-    <div className="bg-black h-screen text-white py-6 px-4 flex flex-col justify-between ">
+    <div className="bg-black min-h-screen text-white py-6 px-4 flex flex-col justify-between ">
       <h1 className="text-center font-semibold text-4xl mb-4">
         Welcome to Room {roomId}
       </h1>
@@ -208,7 +208,7 @@ const ChatRoom = () => {
             {username} (You)
           </p>
           <video autoPlay height={400} width={400} ref={localVideoRef}></video>
-          <audio muted ref={localAudioRef}></audio>
+          <audio  ref={localAudioRef}></audio>
         </div>
 
         <div className="rounded-lg overflow-hidden ">
