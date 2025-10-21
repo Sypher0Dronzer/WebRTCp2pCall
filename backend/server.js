@@ -83,6 +83,6 @@ io.on("connection", (socket) => {
   });
 });
 
-httpServer.listen(5000, "0.0.0.0", (e) => {
+httpServer.listen(process.env.PORT || 5000, "0.0.0.0", (e) => {
   console.log("Localhost running on port", 5000);
 });

@@ -217,7 +217,7 @@ const ChatRoom = () => {
           )}
 
           <video autoPlay height={400} width={400} ref={remoteVideoRef}></video>
-          <audio autoPlay muted ref={remoteAudioRef}></audio>
+          <audio autoPlay  ref={remoteAudioRef}></audio>
         </div>
       </div>
 
