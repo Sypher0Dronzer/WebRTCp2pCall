@@ -114,6 +114,15 @@ const ChatRoom = () => {
     createPeerConnection();
     const stream = await getUserMediaSafe();
     attachLocalMedia(stream);
+
+    // Only manually trigger if NO tracks were added
+    // (meaning both video and audio were denied)
+    const senders = pcRef.current.getSenders();
+    const hasAnyTracks = senders.some((sender) => sender.track !== null);
+
+    if (!hasAnyTracks && pcRef.current.signalingState === "stable") {
+      handleNegotiationNeededEvent();
+    }
   };
 
   async function handleNegotiationNeededEvent() {
@@ -220,38 +229,96 @@ const ChatRoom = () => {
     socket.emit("screen-share-stopped", { roomId, from: username });
   };
 
-  const toggleVideo = () => {
+  const toggleVideo = async () => {
     if (!streamRef.current) return;
 
     const videoTrack = streamRef.current.getVideoTracks()[0];
-    if (videoTrack) {
-      videoTrack.enabled = !videoTrack.enabled;
-      setHasVideo(videoTrack.enabled);
 
-      // Notify remote peer
-      socket.emit("video-toggled", {
-        roomId,
-        from: username,
-        enabled: videoTrack.enabled,
-      });
+    // If no video track exists (was denied initially), request permission
+    if (!videoTrack) {
+      try {
+        const newStream = await navigator.mediaDevices.getUserMedia({
+          video: true,
+        });
+        const newVideoTrack = newStream.getVideoTracks()[0];
+
+        // Add to streamRef
+        streamRef.current.addTrack(newVideoTrack);
+
+        // Display locally
+        const videoStream = new MediaStream([newVideoTrack]);
+        localVideoRef.current.srcObject = videoStream;
+
+        // Add to peer connection
+        pcRef.current.addTrack(newVideoTrack, streamRef.current);
+
+        setHasVideo(true);
+        socket.emit("video-toggled", {
+          roomId,
+          from: username,
+          enabled: true,
+        });
+      } catch (err) {
+        console.error("Video permission denied:", err);
+        alert("Please allow camera access to enable video");
+      }
+      return;
     }
+
+    // If track exists, just toggle it
+    videoTrack.enabled = !videoTrack.enabled;
+    setHasVideo(videoTrack.enabled);
+
+    socket.emit("video-toggled", {
+      roomId,
+      from: username,
+      enabled: videoTrack.enabled,
+    });
   };
 
-  const toggleAudio = () => {
+  const toggleAudio = async () => {
     if (!streamRef.current) return;
 
     const audioTrack = streamRef.current.getAudioTracks()[0];
-    if (audioTrack) {
-      audioTrack.enabled = !audioTrack.enabled;
-      setHasAudio(audioTrack.enabled);
+    // If no audio track exists (was denied initially), request permission
+    if (!audioTrack) {
+      try {
+        const newStream = await navigator.mediaDevices.getUserMedia({
+          audio: true,
+        });
+        const newAudioTrack = newStream.getAudioTracks()[0];
 
-      // Notify remote peer
-      socket.emit("audio-toggled", {
-        roomId,
-        from: username,
-        enabled: audioTrack.enabled,
-      });
+        // Add to streamRef
+        streamRef.current.addTrack(newAudioTrack);
+
+        // Display locally
+        const audioStream = new MediaStream([newAudioTrack]);
+        localAudioRef.current.srcObject = audioStream;
+
+        // Add to peer connection
+        pcRef.current.addTrack(newAudioTrack, streamRef.current);
+
+        setHasAudio(true);
+        socket.emit("audio-toggled", {
+          roomId,
+          from: username,
+          enabled: true,
+        });
+      } catch (err) {
+        console.error("Audio permission denied:", err);
+        alert("Please allow microphone access to enable audio");
+      }
+      return;
     }
+    audioTrack.enabled = !audioTrack.enabled;
+    setHasAudio(audioTrack.enabled);
+
+    // Notify remote peer
+    socket.emit("audio-toggled", {
+      roomId,
+      from: username,
+      enabled: audioTrack.enabled,
+    });
   };
 
   const shareScreen = async () => {
@@ -384,85 +451,80 @@ const ChatRoom = () => {
         Welcome to Room {roomId}
       </h1>
       <div className="flex flex-wrap justify-center gap-4 items-center">
-
         {/* ------------------------------local ---------------------- */}
-        <div className="rounded-lg overflow-hidden relative">
+        <div className="overflow-hidden  ">
           <p className="text-xl text-white text-center mb-3">
             {username} (You)
           </p>
 
-          {/* Always render video element */}
-          <video
-            autoPlay
-            muted
-            height={400}
-            width={400}
-            ref={localVideoRef}
-            className={`${
-              !hasVideo ? "opacity-0" : "opacity-100"
-            } transition-opacity`}
-          ></video>
-
-          {/* Overlay fallback text */}
-          {!hasVideo && (
-            <div className="absolute inset-0 flex items-center justify-center bg-gray-800 text-gray-300 text-lg">
-              {username}'s video is off 🎥
-            </div>
-          )}
-
-          {/* Audio placeholder */}
-          <audio autoPlay ref={localAudioRef}></audio>
-          {!hasAudio && (
-            <p className="text-center text-gray-400 mt-1 text-sm">
-              Mic is off 🎙️
-            </p>
-          )}
-        </div>
-
-        {/* {remoteConnected && (
-          <div className="rounded-lg overflow-hidden ">
-            {remoteAudioRef && (
-              <p className="text-xl text-white text-center mb-3">
-                {remoteName}{" "}
-              </p>
-            )}
-
+          <div className="relative">
+            {/* Always render video element */}
             <video
               autoPlay
-              height={400}
-              width={400}
-              ref={remoteVideoRef}
-            ></video>
-            <audio autoPlay ref={remoteAudioRef}></audio>
-          </div>
-        )} */}
-        {remoteConnected && (
-          <div className="rounded-lg overflow-hidden relative">
-            <p className="text-xl text-white text-center mb-3">{remoteName}</p>
-
-            <video
-              autoPlay
-              height={400}
-              width={400}
               muted
-              ref={remoteVideoRef}
+              height={400}
+              width={400}
+              ref={localVideoRef}
               className={`${
-                !remoteHasVideo ? "opacity-0" : "opacity-100"
-              } transition-opacity`}
+                !hasVideo ? "opacity-0" : "opacity-100"
+              } transition-opacity rounded-lg `}
             ></video>
 
-            {!remoteHasVideo && (
-              <div className="absolute inset-0 flex items-center justify-center bg-gray-800 text-gray-300 text-lg">
-                {remoteName}'s video is off 🎥
+            {/* Overlay fallback text */}
+            {!hasVideo && (
+              <div className="absolute rounded-2xl font-bold inset-0 flex items-center justify-center bg-green-800 text-gray-300 text-2xl">
+                <div className="rounded-full size-16 bg-green-600 border border-dashed flex justify-center items-center">
+                  <p>{username[0]}</p>
+                </div>
               </div>
             )}
 
-            <audio autoPlay ref={remoteAudioRef}></audio>
-            {!remoteHasAudio && (
-              <p className="text-center text-gray-400 mt-1 text-sm">
-                Mic is off 🎙️
-              </p>
+            {/* Audio placeholder */}
+            <audio autoPlay ref={localAudioRef}></audio>
+            {!hasAudio && (
+              <div className="absolute bottom-2 right-2 rounded-2xl px-2 py-1 bg-white text-black/90">
+                <p className="text-center font-semibold text-sm">
+                  Mic is off 🎙️
+                </p>
+              </div>
             )}
+          </div>
+        </div>
+
+        {/* ------------------------------remote video ----------------------- */}
+        {remoteConnected && (
+          <div className="rounded-lg overflow-hidden r">
+            <p className="text-xl text-white text-center mb-3">{remoteName}</p>
+
+            <div className="relative size-[400px]">
+              <video
+                autoPlay
+                height={400}
+                width={400}
+                muted
+                ref={remoteVideoRef}
+                className={`${
+                  !remoteHasVideo ? "opacity-0" : "opacity-100"
+                } transition-opacity rounded-lg`}
+              ></video>
+
+              {!remoteHasVideo && (
+                <div className="absolute rounded-2xl font-bold inset-0 flex items-center justify-center bg-green-800 text-gray-300 text-2xl">
+                  <div className="rounded-full size-16 bg-green-600 border border-dashed flex justify-center items-center">
+                    <p>{remoteName[0]}</p>
+                  </div>
+                </div>
+              )}
+
+              <audio autoPlay ref={remoteAudioRef}></audio>
+              {!remoteHasAudio && (
+                <div className="absolute bottom-2 right-2 rounded-2xl px-2 py-1 bg-white text-black/90">
+                  <p className="text-center font-semibold text-sm">
+                    Mic is off 🎙️
+                  </p>
+                </div>
+              )}
+            </div>
           </div>
         )}
 
