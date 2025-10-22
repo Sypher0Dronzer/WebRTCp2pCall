@@ -29,7 +29,7 @@ const App = () => {
         </div>
 
         <div className="">
-          <label htmlFor="">Room ID</label>
+          <p >Room ID</p>
           <input
             value={room}
             onChange={(e) => setRoom(e.target.value)}

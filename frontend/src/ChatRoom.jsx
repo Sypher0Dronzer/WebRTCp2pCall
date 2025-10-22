@@ -19,7 +19,13 @@ const ChatRoom = () => {
   const localAudioRef = useRef(null);
   const remoteVideoRef = useRef(null);
   const remoteAudioRef = useRef(null);
+  const localScreenShareRef = useRef(null);
+  const remoteScreenShareRef = useRef(null);
+  const [localScreenShare, setLocalScreenShare] = useState(false);
+  const [remoteScreenShare, setRemoteScreenShare] = useState(false);
   const [remoteName, setRemoteName] = useState("");
+  const [remoteConnected, setRemoteConnected] = useState(false);
+  const screenTrackRef = useRef(null);
 
   const getMyCam = async () => {
     try {
@@ -27,6 +33,7 @@ const ChatRoom = () => {
         audio: true,
         video: true,
       });
+      console.log(streamRef.current)
 
       // ----------------------------Method 1 --------------------------
       // const tracks = stream.getTracks()
@@ -68,7 +75,7 @@ const ChatRoom = () => {
 
   async function handleNegotiationNeededEvent() {
     // This function is called whenever the WebRTC infrastructure needs you to start the session negotiation process anew. Its job is to create and send an offer, to the callee, asking it to connect with us. See Starting negotiation to see how we handle this.
-    // console.log("event triggered ", e);
+    // console.log("event triggered ");
 
     socket.emit("newUser", { name: username, roomId });
 
@@ -94,9 +101,13 @@ const ChatRoom = () => {
   }
 
   function handleTrackEvent(e) {
-    if (e.track.kind == "video")
-      remoteVideoRef.current.srcObject = new MediaStream([e.track]);
-    else remoteAudioRef.current.srcObject = new MediaStream([e.track]);
+    if (e.track.kind == "video") {
+      if (!remoteVideoRef.current.srcObject)
+        remoteVideoRef.current.srcObject = new MediaStream([e.track]);
+      else {
+        remoteScreenShareRef.current.srcObject = new MediaStream([e.track]);
+      }
+    } else remoteAudioRef.current.srcObject = new MediaStream([e.track]);
   }
 
   function handleICECandidateEvent(e) {
@@ -109,7 +120,8 @@ const ChatRoom = () => {
       case "closed":
       case "failed":
       case "disconnected":
-        closeVideoCall();
+        // closeVideoCall();
+        setRemoteConnected(false)
         break;
     }
   }
@@ -144,6 +156,71 @@ const ChatRoom = () => {
     navigate("/");
   }
 
+  const endScreenShare = () => {
+    const track = screenTrackRef.current;
+    if (!track) return;
+
+    // Stop the track — this will also trigger 'ended' event if still active
+    track.stop();
+    screenTrackRef.current = null;
+
+    // Remove the video from your UI
+    if (localScreenShareRef.current) {
+      localScreenShareRef.current.srcObject = null;
+    }
+    setLocalScreenShare(false);
+
+    // Optionally remove track from peer connection
+    const sender = pcRef.current?.getSenders()?.find((s) => s.track === track);
+    if (sender) pcRef.current.removeTrack(sender);
+    // Notify remote peer
+    socket.emit("screen-share-stopped", { roomId, from: username });
+  };
+
+  const shareScreen = async () => {
+    try {
+      const screenStream = await navigator.mediaDevices.getDisplayMedia({
+        video: true,
+        audio: false,
+      });
+
+      const screenTrack = screenStream.getVideoTracks()[0];
+      localScreenShareRef.current.srcObject = screenStream;
+      screenTrackRef.current = screenTrack; // store it globally
+      // Add track to peer connection
+      pcRef.current.addTrack(screenTrack, screenStream);
+
+      // let sender = pcRef.current.addTrack(screenTrack, screenStream);
+      // this way we directly have the sender screenshare reference which we can delete using removeTrack
+
+      // Notify remote peer that screen share started
+      socket.emit("screen-share-started", { roomId, from: username });
+
+      // Handle when user stops sharing
+
+      screenTrack.addEventListener("ended", () => {
+        endScreenShare();
+      });
+      // screenTrack.addEventListener("ended", () => {
+      //   // Remove this track from peer connection
+      //   // const sender = pcRef.current
+      //   //   .getSenders()
+      //   //   .find((s) => s.track === screenTrack);
+
+      //   if (sender) {
+      //     pcRef.current.removeTrack(sender);
+      //   }
+      //   localScreenShareRef.current.srcObject = null;
+      //   setLocalScreenShare(false);
+
+      //   // Notify remote peer
+      //   socket.emit("screen-share-stopped", { roomId, from: username });
+      // });
+    } catch (err) {
+      console.error("Error sharing screen:", err);
+    }
+  };
+
   useEffect(() => {
     if (localVideoRef) {
       getMyCam();
@@ -159,18 +236,22 @@ const ChatRoom = () => {
     if (!socket) return;
 
     const handleReceiveOffer = async ({ offer, from, name }) => {
+      setRemoteConnected(true);
       setRemoteName(name);
+
       if (!pcRef.current) return;
       await pcRef.current.setRemoteDescription(
         new RTCSessionDescription(offer)
       );
       const answer = await pcRef.current.createAnswer();
       await pcRef.current.setLocalDescription(answer);
-      socket.emit("send-answer", { to: from, answer, name:username });
+      socket.emit("send-answer", { to: from, answer, name: username });
     };
 
-    const handleReceiveAnswer = ({ answer,name }) => {
-      setRemoteName(name)
+    const handleReceiveAnswer = ({ answer, name }) => {
+      setRemoteConnected(true);
+
+      setRemoteName(name);
       if (!pcRef.current) return;
       pcRef.current.setRemoteDescription(new RTCSessionDescription(answer));
     };
@@ -184,6 +265,20 @@ const ChatRoom = () => {
       navigate("/"); // send them back to home or lobby
     };
 
+    // when remote starts sharing
+    socket.on("screen-share-started", ({ from }) => {
+      console.log(`${from} started screen sharing`);
+      setRemoteScreenShare(true);
+    });
+
+    // when remote stops sharing
+    socket.on("screen-share-stopped", ({ from }) => {
+      console.log(`${from} stopped screen sharing`);
+      setRemoteScreenShare(false);
+      if (remoteScreenShareRef.current)
+        remoteScreenShareRef.current.srcObject = null;
+    });
+
     socket.on("receive-offer", handleReceiveOffer);
     socket.on("receive-answer", handleReceiveAnswer);
     socket.on("receive-new-ice-candidate", handleNewICECandidate);
@@ -194,8 +289,10 @@ const ChatRoom = () => {
       socket.off("receive-answer", handleReceiveAnswer);
       socket.off("receive-new-ice-candidate", handleNewICECandidate);
       socket.off("room-full", handleRoomFull);
+      socket.off("screen-share-started");
+      socket.off("screen-share-stopped");
     };
-  }, [socket]);
+  }, [socket, username, navigate]);
 
   return (
     <div className="bg-black min-h-screen text-white py-6 px-4 flex flex-col justify-between ">
@@ -208,25 +305,73 @@ const ChatRoom = () => {
             {username} (You)
           </p>
           <video autoPlay height={400} width={400} ref={localVideoRef}></video>
-          <audio  ref={localAudioRef}></audio>
+          <audio ref={localAudioRef}></audio>
         </div>
 
-        <div className="rounded-lg overflow-hidden ">
+        {remoteConnected && <div className="rounded-lg overflow-hidden ">
           {remoteAudioRef && (
             <p className="text-xl text-white text-center mb-3">{remoteName} </p>
           )}
 
           <video autoPlay height={400} width={400} ref={remoteVideoRef}></video>
-          <audio autoPlay  ref={remoteAudioRef}></audio>
-        </div>
+          <audio autoPlay ref={remoteAudioRef}></audio>
+        </div>}
+
+        {localScreenShare && (
+          <div className="rounded-lg overflow-hidden">
+            <p className="text-xl text-white text-center mb-3">
+              You are presenting
+            </p>
+            <video
+              autoPlay
+              height={400}
+              width={400}
+              ref={localScreenShareRef}
+            ></video>
+          </div>
+        )}
+
+        {remoteScreenShare && (
+          <div className="rounded-lg overflow-hidden">
+            <p className="text-xl text-white text-center mb-3">
+              {remoteName} is presenting
+            </p>
+            <video
+              autoPlay
+              height={400}
+              width={400}
+              ref={remoteScreenShareRef}
+            ></video>
+          </div>
+        )}
       </div>
 
-      <div className="flex justify-center">
+      <div className="flex justify-center gap-4">
         <button
           onClick={closeVideoCall}
           className="py-2 px-4 bg-red-600 border border-white/40 hover:bg-red-800 text-white/80 hover;text-white/60 font-semibold  rounded-full cursor-pointer"
         >
           End Call
+        </button>
+        <button
+          onClick={() => {
+            if (!remoteConnected) {
+              alert(
+                "Wait for another user to join before sharing your screen!"
+              );
+              return;
+            }
+            if (!localScreenShare) {
+              setLocalScreenShare(true);
+              shareScreen();
+            } else {
+              endScreenShare(); // manually trigger stop + cleanup
+              setLocalScreenShare(false);
+            }
+          }}
+          className="py-2 px-4 bg-blue-600 hover:bg-blue-800 text-white font-semibold rounded-full cursor-pointer mr-4"
+        >
+          {localScreenShare ? "End Screen Share" : "Share Screen"}
         </button>
       </div>
     </div>
