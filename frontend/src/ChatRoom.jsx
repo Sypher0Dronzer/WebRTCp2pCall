@@ -384,6 +384,8 @@ const ChatRoom = () => {
         Welcome to Room {roomId}
       </h1>
       <div className="flex flex-wrap justify-center gap-4 items-center">
+
+        {/* ------------------------------local ---------------------- */}
         <div className="rounded-lg overflow-hidden relative">
           <p className="text-xl text-white text-center mb-3">
             {username} (You)
@@ -392,6 +394,7 @@ const ChatRoom = () => {
           {/* Always render video element */}
           <video
             autoPlay
+            muted
             height={400}
             width={400}
             ref={localVideoRef}
@@ -441,6 +444,7 @@ const ChatRoom = () => {
               autoPlay
               height={400}
               width={400}
+              muted
               ref={remoteVideoRef}
               className={`${
                 !remoteHasVideo ? "opacity-0" : "opacity-100"
@@ -470,6 +474,7 @@ const ChatRoom = () => {
             <video
               autoPlay
               height={400}
+              muted
               width={400}
               ref={localScreenShareRef}
             ></video>

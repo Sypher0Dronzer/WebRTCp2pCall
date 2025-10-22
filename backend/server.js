@@ -35,7 +35,7 @@ const io = new Server(httpServer, {
 });
 
 io.on("connection", (socket) => {
-  console.log("user connected with socket id ", socket.id);
+  // console.log("user connected with socket id ", socket.id);
 
   // add the new user to room
   socket.on("newUser", ({ name, roomId }) => {
@@ -49,7 +49,7 @@ io.on("connection", (socket) => {
       return; // Don't join room
     }
     rooms.set(socket.id, roomId);
-    console.log(rooms);
+    // console.log(rooms);
     socket.join(roomId);
   });
 
@@ -79,7 +79,7 @@ io.on("connection", (socket) => {
     let roomId = rooms.get(socket.id);
     socket.leave(roomId);
     rooms.delete(socket.id);
-    console.log("after deleting ", rooms);
+    // console.log("after deleting ", rooms);
   });
   socket.on("video-toggled", ({ roomId, from, enabled }) => {
     socket.to(roomId).emit("video-toggled", {
@@ -97,13 +97,13 @@ io.on("connection", (socket) => {
 
 
   socket.on("disconnect", () => {
-    console.log(socket.id, "disconnected");
+    // console.log(socket.id, "disconnected");
     if (!rooms.has(socket.id)) return;
     let roomId = rooms.get(socket.id);
 
     socket.leave(roomId);
     rooms.delete(socket.id);
-    console.log("after deleting ", rooms);
+    // console.log("after deleting ", rooms);
   });
 });
 
