@@ -70,9 +70,9 @@ io.on("connection", (socket) => {
     socket.to(roomId).emit("screen-share-started", { from: username });
   });
 
-   socket.on("screen-share-stopped", ({ roomId, from: username })=>{
-     socket.to(roomId).emit("screen-share-stopped", {  from: username });
-   });
+  socket.on("screen-share-stopped", ({ roomId, from: username }) => {
+    socket.to(roomId).emit("screen-share-stopped", { from: username });
+  });
 
   socket.on("peer-left", () => {
     if (!rooms.has(socket.id)) return;
@@ -81,6 +81,20 @@ io.on("connection", (socket) => {
     rooms.delete(socket.id);
     console.log("after deleting ", rooms);
   });
+  socket.on("video-toggled", ({ roomId, from, enabled }) => {
+    socket.to(roomId).emit("video-toggled", {
+      from,
+      enabled,
+    });
+  });
+
+  socket.on("audio-toggled", ({ roomId, from, enabled }) => {
+    socket.to(roomId).emit("audio-toggled", {
+      from,
+      enabled,
+    });
+  });
+
 
   socket.on("disconnect", () => {
     console.log(socket.id, "disconnected");
@@ -93,6 +107,6 @@ io.on("connection", (socket) => {
   });
 });
 
-httpServer.listen(process.env.PORT || 5000, (e) => {
+httpServer.listen(process.env.PORT || 100000, (e) => {
   console.log("Localhost running on port", process.env.PORT);
 });

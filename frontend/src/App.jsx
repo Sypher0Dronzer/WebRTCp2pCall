@@ -19,7 +19,7 @@ const App = () => {
         onSubmit={handleJoinRoom}
       >
         <div className="">
-          <label htmlFor="">Enter your name</label>
+          <p className="inline">Enter your name</p>
           <input
             value={username}
             onChange={(e) => setUsername(e.target.value)}
@@ -29,7 +29,7 @@ const App = () => {
         </div>
 
         <div className="">
-          <p >Room ID</p>
+          <p className="inline">Room ID</p>
           <input
             value={room}
             onChange={(e) => setRoom(e.target.value)}
