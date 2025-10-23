@@ -28,8 +28,8 @@ const ChatRoom = () => {
   const screenTrackRef = useRef(null);
   const [hasVideo, setHasVideo] = useState(false);
   const [hasAudio, setHasAudio] = useState(false);
-  const [remoteHasVideo, setRemoteHasVideo] = useState(true);
-  const [remoteHasAudio, setRemoteHasAudio] = useState(true);
+  const [remoteHasVideo, setRemoteHasVideo] = useState(false); // to show if remote video is on or off
+  const [remoteHasAudio, setRemoteHasAudio] = useState(false); // to show if remote audio is on or off
 
   const createPeerConnection = () => {
     pcRef.current = new RTCPeerConnection(configuration);
@@ -127,7 +127,7 @@ const ChatRoom = () => {
 
   async function handleNegotiationNeededEvent() {
     // This function is called whenever the WebRTC infrastructure needs you to start the session negotiation process anew. Its job is to create and send an offer, to the callee, asking it to connect with us. See Starting negotiation to see how we handle this.
-    // console.log("event triggered ");
+    console.log("event triggered ");
 
     socket.emit("newUser", { name: username, roomId });
 
@@ -153,13 +153,23 @@ const ChatRoom = () => {
   }
 
   function handleTrackEvent(e) {
+    console.log('handletrack event is triggered')
     if (e.track.kind == "video") {
       if (!remoteVideoRef.current.srcObject)
-        remoteVideoRef.current.srcObject = new MediaStream([e.track]);
+
+      { 
+        setRemoteHasVideo(true)
+         remoteVideoRef.current.srcObject = new MediaStream([e.track]);
+        }
       else {
         remoteScreenShareRef.current.srcObject = new MediaStream([e.track]);
       }
-    } else remoteAudioRef.current.srcObject = new MediaStream([e.track]);
+    }
+    // else it is audio 
+     else {
+      setRemoteHasAudio(true)
+      remoteAudioRef.current.srcObject = new MediaStream([e.track]);
+    }
   }
 
   function handleICECandidateEvent(e) {
