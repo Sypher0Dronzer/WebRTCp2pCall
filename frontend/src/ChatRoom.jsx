@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { userStore } from "./store/userStore";
 import { useNavigate, useParams } from "react-router";
+import CanvasTest from "./CanvasTest";
 
 const configuration = {
   iceServers: [
@@ -16,7 +17,7 @@ const ChatRoom = () => {
   let pcRef = useRef(null),
     streamRef = useRef(null);
   const localVideoRef = useRef(null);
-  const localAudioRef = useRef(null);
+  // const localAudioRef = useRef(null);
   const remoteVideoRef = useRef(null);
   const remoteAudioRef = useRef(null);
   const localScreenShareRef = useRef(null);
@@ -30,6 +31,9 @@ const ChatRoom = () => {
   const [hasAudio, setHasAudio] = useState(false);
   const [remoteHasVideo, setRemoteHasVideo] = useState(false); // to show if remote video is on or off
   const [remoteHasAudio, setRemoteHasAudio] = useState(false); // to show if remote audio is on or off
+
+  const [remoteAudioStream, setRemoteAudioStream] = useState(null);
+  const [remoteVideoAtStart,setRemoteVideoAtStart]=useState(true)
 
   const createPeerConnection = () => {
     pcRef.current = new RTCPeerConnection(configuration);
@@ -99,10 +103,10 @@ const ChatRoom = () => {
       localVideoRef.current.srcObject = videoStream;
     }
 
-    if (audioTracks.length > 0) {
-      const audioStream = new MediaStream(audioTracks);
-      localAudioRef.current.srcObject = audioStream;
-    }
+    // if (audioTracks.length > 0) {
+    //   const audioStream = new MediaStream(audioTracks);
+    //   localAudioRef.current.srcObject = audioStream;
+    // }
 
     // add all tracks to peer connection
     stream
@@ -153,22 +157,31 @@ const ChatRoom = () => {
   }
 
   function handleTrackEvent(e) {
-    console.log('handletrack event is triggered')
     if (e.track.kind == "video") {
-      if (!remoteVideoRef.current.srcObject)
-
-      { 
-        setRemoteHasVideo(true)
-         remoteVideoRef.current.srcObject = new MediaStream([e.track]);
-        }
-      else {
+      if (!remoteVideoRef.current.srcObject && remoteVideoAtStart) {
+        setRemoteHasVideo(true);
+        remoteVideoRef.current.srcObject = new MediaStream([e.track]);
+      } else {
         remoteScreenShareRef.current.srcObject = new MediaStream([e.track]);
       }
     }
-    // else it is audio 
-     else {
-      setRemoteHasAudio(true)
-      remoteAudioRef.current.srcObject = new MediaStream([e.track]);
+    // else it is audio
+    else if (e.track.kind === "audio") {
+      setRemoteHasAudio(true);
+      const newStream = new MediaStream([e.track]);
+      remoteAudioRef.current.srcObject = newStream;
+
+      // capture stream for visualizer (after element has attached)
+      setTimeout(() => {
+        try {
+          const captured =
+            remoteAudioRef.current?.captureStream?.() ||
+            remoteAudioRef.current?.mozCaptureStream?.();
+          if (captured) setRemoteAudioStream(captured);
+        } catch (err) {
+          console.warn("Audio visualization not supported:", err);
+        }
+      }, 500); // short delay to ensure <audio> has begun playback
     }
   }
 
@@ -184,6 +197,8 @@ const ChatRoom = () => {
       case "disconnected":
         // closeVideoCall();
         setRemoteConnected(false);
+    socket.emit("peer-left");
+
         break;
     }
   }
@@ -302,8 +317,8 @@ const ChatRoom = () => {
         streamRef.current.addTrack(newAudioTrack);
 
         // Display locally
-        const audioStream = new MediaStream([newAudioTrack]);
-        localAudioRef.current.srcObject = audioStream;
+        // const audioStream = new MediaStream([newAudioTrack]);
+        // localAudioRef.current.srcObject = audioStream;
 
         // Add to peer connection
         pcRef.current.addTrack(newAudioTrack, streamRef.current);
@@ -351,6 +366,7 @@ const ChatRoom = () => {
       socket.emit("screen-share-started", { roomId, from: username });
 
       // Handle when user stops sharing
+
 
       screenTrack.addEventListener("ended", () => {
         endScreenShare();
@@ -427,7 +443,12 @@ const ChatRoom = () => {
     // when remote starts sharing
     socket.on("screen-share-started", ({ from }) => {
       console.log(`${from} started screen sharing`);
+
       setRemoteScreenShare(true);
+       // we put a check incase there is the remote video of user missing 
+      if (!remoteVideoRef.current.srcObject) {
+      setRemoteVideoAtStart(false)
+    }
     });
 
     // when remote stops sharing
@@ -483,14 +504,14 @@ const ChatRoom = () => {
             {/* Overlay fallback text */}
             {!hasVideo && (
               <div className="absolute rounded-2xl font-bold inset-0 flex items-center justify-center bg-green-800 text-gray-300 text-2xl">
-                <div className="rounded-full size-16 bg-green-600 border border-dashed flex justify-center items-center">
+                <div className="rounded-full size-22 bg-green-600 border border-dashed flex justify-center items-center">
                   <p>{username[0]}</p>
                 </div>
               </div>
             )}
 
             {/* Audio placeholder */}
-            <audio autoPlay ref={localAudioRef}></audio>
+            {/* <audio autoPlay ref={localAudioRef}></audio> */}
             {!hasAudio && (
               <div className="absolute bottom-2 right-2 rounded-2xl px-2 py-1 bg-white text-black/90">
                 <p className="text-center font-semibold text-sm">
@@ -506,7 +527,7 @@ const ChatRoom = () => {
           <div className="rounded-lg overflow-hidden r">
             <p className="text-xl text-white text-center mb-3">{remoteName}</p>
 
-            <div className="relative size-[400px]">
+            <div className="relative ">
               <video
                 autoPlay
                 height={400}
@@ -518,15 +539,25 @@ const ChatRoom = () => {
                 } transition-opacity rounded-lg`}
               ></video>
 
-              {!remoteHasVideo && (
+              {!remoteHasVideo && !remoteHasAudio && (
                 <div className="absolute rounded-2xl font-bold inset-0 flex items-center justify-center bg-green-800 text-gray-300 text-2xl">
-                  <div className="rounded-full size-16 bg-green-600 border border-dashed flex justify-center items-center">
+                  <div className="rounded-full size-22 bg-green-600 border border-dashed flex justify-center items-center">
                     <p>{remoteName[0]}</p>
                   </div>
                 </div>
               )}
+              {!remoteHasVideo &&remoteHasAudio && remoteAudioStream && (
+                <div className="absolute rounded-2xl  inset-0 border border-white/70">
+                  <div className="relative h-full">
+                    <div className="rounded-full overflow-hidden absolute top-1/2 -translate-1/2 left-1/2 size-22 bg-green-600 border border-dashed text-gray-300 text-2xl font-bold flex justify-center items-center">
+                      <p>{remoteName[0]}</p>
+                    </div>
+                    <CanvasTest externalStream={remoteAudioStream} />
+                  </div>
+                </div>
+              )}
 
-              <audio autoPlay ref={remoteAudioRef}></audio>
+              <audio autoPlay muted ref={remoteAudioRef}></audio>
               {!remoteHasAudio && (
                 <div className="absolute bottom-2 right-2 rounded-2xl px-2 py-1 bg-white text-black/90">
                   <p className="text-center font-semibold text-sm">
@@ -538,6 +569,13 @@ const ChatRoom = () => {
           </div>
         )}
 
+        {/* { remoteAudioStream && (
+                <div className="mt-6 size-[400px] bg-blue-400">
+                  <CanvasTest externalStream={remoteAudioStream} />
+                </div>
+              )} */}
+
+        {/* ------------------------------Screen Sharing --------------------- */}
         {localScreenShare && (
           <div className="rounded-lg overflow-hidden">
             <p className="text-xl text-white text-center mb-3">
@@ -560,6 +598,7 @@ const ChatRoom = () => {
             </p>
             <video
               autoPlay
+              muted
               height={400}
               width={400}
               ref={remoteScreenShareRef}
@@ -567,7 +606,7 @@ const ChatRoom = () => {
           </div>
         )}
       </div>
-
+      {/* ------------------------------Buttons ----------------------- */}
       <div className="flex justify-center gap-4">
         <button
           onClick={closeVideoCall}
