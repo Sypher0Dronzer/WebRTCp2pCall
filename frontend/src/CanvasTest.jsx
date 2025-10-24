@@ -132,7 +132,7 @@ const CanvasTest = ({ externalStream }) => {
         context.restore();
       }
       draw2(ctx, i, dataArray, bufferLength) {
-        this.height = dataArray[i] * 1.5;
+        this.height = dataArray[i] * 0.7;
         ctx.save();
         this.x = Math.sin((i * Math.PI) / 180) + 55;
         this.y = Math.cos((i * Math.PI) / 180) + 55;

@@ -33,7 +33,7 @@ const ChatRoom = () => {
   const [remoteHasAudio, setRemoteHasAudio] = useState(false); // to show if remote audio is on or off
 
   const [remoteAudioStream, setRemoteAudioStream] = useState(null);
-  const [remoteVideoAtStart,setRemoteVideoAtStart]=useState(true)
+  const expectedScreenShareTrackIds = useRef(new Set());
 
   const createPeerConnection = () => {
     pcRef.current = new RTCPeerConnection(configuration);
@@ -56,25 +56,27 @@ const ChatRoom = () => {
 
     try {
       const mediaStream = await navigator.mediaDevices.getUserMedia({
-        audio: true,
+        // audio: true,
         video: true,
       });
 
       stream = mediaStream;
+      stream.addTrack(mediaStream.getVideoTracks()[0],mediaStream);
     } catch (err) {
-      console.warn("User denied camera/mic:", err);
+      console.warn("User denied camera", err);
+    }
+
 
       // Try to get only audio if video was denied
       try {
         const audioOnly = await navigator.mediaDevices.getUserMedia({
           audio: true,
         });
-        stream.addTrack(audioOnly.getAudioTracks()[0]);
+        stream.addTrack(audioOnly.getAudioTracks()[0],audioOnly);
       } catch (err2) {
         console.warn("User also denied audio:", err2);
         // no mic, no cam — fallback to empty stream
       }
-    }
 
     return stream;
   };
@@ -131,7 +133,7 @@ const ChatRoom = () => {
 
   async function handleNegotiationNeededEvent() {
     // This function is called whenever the WebRTC infrastructure needs you to start the session negotiation process anew. Its job is to create and send an offer, to the callee, asking it to connect with us. See Starting negotiation to see how we handle this.
-    console.log("event triggered ");
+    // console.log("event triggered ");
 
     socket.emit("newUser", { name: username, roomId });
 
@@ -157,14 +159,39 @@ const ChatRoom = () => {
   }
 
   function handleTrackEvent(e) {
-    if (e.track.kind == "video") {
-      if (!remoteVideoRef.current.srcObject && remoteVideoAtStart) {
-        setRemoteHasVideo(true);
-        remoteVideoRef.current.srcObject = new MediaStream([e.track]);
-      } else {
+    // console.log(
+    //   "handle track triggered :",
+    //   e.track.kind,
+    //   " track ID:",
+    //   e.track.id
+    // );
+    // if (e.track.kind == "video") {
+
+    //    if (!remoteVideoRef.current.srcObject ) {
+    //     setRemoteHasVideo(true);
+    //     remoteVideoRef.current.srcObject = new MediaStream([e.track]);
+    //   }
+    //   else {
+    //     remoteScreenShareRef.current.srcObject = new MediaStream([e.track]);
+    //   }
+    // }
+
+    if (e.track.kind === "video") {
+      // Check if this track ID is a screen share
+      if (expectedScreenShareTrackIds.current.has(e.track.id)) {
+        // console.log("This is a screen share track!");
         remoteScreenShareRef.current.srcObject = new MediaStream([e.track]);
+        expectedScreenShareTrackIds.current.delete(e.track.id); // Clean up
+      } else {
+        // This is regular camera video
+        // console.log("This is a camera track");
+        remoteVideoRef.current.srcObject = new MediaStream([e.track]);
+        setRemoteHasVideo(true);
+        // if (!remoteVideoRef.current.srcObject) {
+        // }
       }
     }
+
     // else it is audio
     else if (e.track.kind === "audio") {
       setRemoteHasAudio(true);
@@ -195,13 +222,43 @@ const ChatRoom = () => {
       case "closed":
       case "failed":
       case "disconnected":
-        // closeVideoCall();
-        setRemoteConnected(false);
-    socket.emit("peer-left");
+      // Reset connection to allow new peer to join
+      resetForNewConnection();
+            setRemoteConnected(false);
+        socket.emit("peer-left");
 
         break;
     }
   }
+  const resetForNewConnection = () => {
+  // Close old peer connection if exists
+  if (pcRef.current) {
+    pcRef.current.ontrack = null;
+    pcRef.current.onicecandidate = null;
+    pcRef.current.oniceconnectionstatechange = null;
+    pcRef.current.onnegotiationneeded = null;
+    
+    pcRef.current.close();
+    pcRef.current = null;
+  }
+  
+  // Reset remote states
+  setRemoteConnected(false);
+  setRemoteName("");
+  setRemoteHasVideo(false);
+  setRemoteHasAudio(false);
+  setRemoteScreenShare(false);
+  setRemoteAudioStream(null);
+  expectedScreenShareTrackIds.current.clear();
+  
+  // Clear remote video/audio refs
+  if (remoteVideoRef.current) remoteVideoRef.current.srcObject = null;
+  if (remoteAudioRef.current) remoteAudioRef.current.srcObject = null;
+  if (remoteScreenShareRef.current) remoteScreenShareRef.current.srcObject = null;
+  
+  // Re-initialize peer connection with local media
+  initializeMediaAndConnection();
+};
 
   function closeVideoCall() {
     if (pcRef.current) {
@@ -221,6 +278,7 @@ const ChatRoom = () => {
           track.stop();
         });
       }
+      expectedScreenShareTrackIds.current.clear(); // Clear all expected IDs
 
       // Close the peer connection
 
@@ -261,6 +319,43 @@ const ChatRoom = () => {
 
     // If no video track exists (was denied initially), request permission
     if (!videoTrack) {
+      alert("Please allow camera access to enable video");
+
+      // try {
+      //   const newStream = await navigator.mediaDevices.getUserMedia({
+      //     video: true,
+      //   });
+      //   const newVideoTrack = newStream.getVideoTracks()[0];
+
+      //   // Add to streamRef
+      //   streamRef.current.addTrack(newVideoTrack);
+
+      //   // Display locally
+      //   const videoStream = new MediaStream([newVideoTrack]);
+      //   localVideoRef.current.srcObject = videoStream;
+
+      //   // Add to peer connection
+      //   pcRef.current.addTrack(newVideoTrack, streamRef.current);
+
+      //   setHasVideo(true);
+      //   socket.emit("video-toggled", {
+      //     roomId,
+      //     from: username,
+      //     enabled: true,
+      //   });
+      // } catch (err) {
+      //   console.error("Video permission denied:", err);
+      //   alert("Please allow camera access to enable video");
+      // }
+      return;
+    }
+
+    // If track exists, just toggle it
+    videoTrack.enabled = !videoTrack.enabled;
+    setHasVideo(videoTrack.enabled);
+    if (!videoTrack.enabled) {
+      videoTrack.stop();
+    } else {
       try {
         const newStream = await navigator.mediaDevices.getUserMedia({
           video: true,
@@ -268,7 +363,7 @@ const ChatRoom = () => {
         const newVideoTrack = newStream.getVideoTracks()[0];
 
         // Add to streamRef
-        streamRef.current.addTrack(newVideoTrack);
+        streamRef.current.addTrack(newVideoTrack, newStream);
 
         // Display locally
         const videoStream = new MediaStream([newVideoTrack]);
@@ -287,12 +382,9 @@ const ChatRoom = () => {
         console.error("Video permission denied:", err);
         alert("Please allow camera access to enable video");
       }
+
       return;
     }
-
-    // If track exists, just toggle it
-    videoTrack.enabled = !videoTrack.enabled;
-    setHasVideo(videoTrack.enabled);
 
     socket.emit("video-toggled", {
       roomId,
@@ -357,16 +449,26 @@ const ChatRoom = () => {
       localScreenShareRef.current.srcObject = screenStream;
       screenTrackRef.current = screenTrack; // store it globally
       // Add track to peer connection
-      pcRef.current.addTrack(screenTrack, screenStream);
+
+      const sender = pcRef.current.addTrack(screenTrack, screenStream);
+
+      // Get the track ID that will be sent to remote
+      // The sender.track.id is what the remote peer will receive
+      const trackId = sender.track.id;
+
+      socket.emit("screen-share-started", {
+        roomId,
+        from: username,
+        trackId: trackId,
+      });
+      //  await new Promise(resolve => setTimeout(resolve, 1000));
 
       // let sender = pcRef.current.addTrack(screenTrack, screenStream);
       // this way we directly have the sender screenshare reference which we can delete using removeTrack
 
       // Notify remote peer that screen share started
-      socket.emit("screen-share-started", { roomId, from: username });
 
       // Handle when user stops sharing
-
 
       screenTrack.addEventListener("ended", () => {
         endScreenShare();
@@ -441,20 +543,23 @@ const ChatRoom = () => {
     });
 
     // when remote starts sharing
-    socket.on("screen-share-started", ({ from }) => {
+    socket.on("screen-share-started", ({ from, trackId }) => {
+      console.log(`${from} started screen sharing, trackId: ${trackId}`);
+      if (trackId) {
+        expectedScreenShareTrackIds.current.add(trackId);
+      }
+      // we put a check incase there is the remote video of user missing
+
       console.log(`${from} started screen sharing`);
 
       setRemoteScreenShare(true);
-       // we put a check incase there is the remote video of user missing 
-      if (!remoteVideoRef.current.srcObject) {
-      setRemoteVideoAtStart(false)
-    }
     });
 
     // when remote stops sharing
     socket.on("screen-share-stopped", ({ from }) => {
       console.log(`${from} stopped screen sharing`);
       setRemoteScreenShare(false);
+      expectedScreenShareTrackIds.current.clear(); // Clear all expected IDs
       if (remoteScreenShareRef.current)
         remoteScreenShareRef.current.srcObject = null;
     });
@@ -546,7 +651,7 @@ const ChatRoom = () => {
                   </div>
                 </div>
               )}
-              {!remoteHasVideo &&remoteHasAudio && remoteAudioStream && (
+              {!remoteHasVideo && remoteHasAudio && remoteAudioStream && (
                 <div className="absolute rounded-2xl  inset-0 border border-white/70">
                   <div className="relative h-full">
                     <div className="rounded-full overflow-hidden absolute top-1/2 -translate-1/2 left-1/2 size-22 bg-green-600 border border-dashed text-gray-300 text-2xl font-bold flex justify-center items-center">
@@ -557,7 +662,7 @@ const ChatRoom = () => {
                 </div>
               )}
 
-              <audio autoPlay  ref={remoteAudioRef}></audio>
+              <audio autoPlay ref={remoteAudioRef}></audio>
               {!remoteHasAudio && (
                 <div className="absolute bottom-2 right-2 rounded-2xl px-2 py-1 bg-white text-black/90">
                   <p className="text-center font-semibold text-sm">

@@ -66,8 +66,8 @@ io.on("connection", (socket) => {
     socket.to(roomId).emit("receive-new-ice-candidate", { candidate });
   });
 
-  socket.on("screen-share-started", ({ roomId, from: username }) => {
-    socket.to(roomId).emit("screen-share-started", { from: username });
+  socket.on("screen-share-started", ({ roomId, from: username,trackId }) => {
+    socket.to(roomId).emit("screen-share-started", { from: username,trackId });
   });
 
   socket.on("screen-share-stopped", ({ roomId, from: username }) => {
