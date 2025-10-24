@@ -511,7 +511,7 @@ const ChatRoom = () => {
             )}
 
             {/* Audio placeholder */}
-            {/* <audio autoPlay ref={localAudioRef}></audio> */}
+            {/* <audio muted autoPlay ref={localAudioRef}></audio> */}
             {!hasAudio && (
               <div className="absolute bottom-2 right-2 rounded-2xl px-2 py-1 bg-white text-black/90">
                 <p className="text-center font-semibold text-sm">
@@ -557,7 +557,7 @@ const ChatRoom = () => {
                 </div>
               )}
 
-              <audio autoPlay muted ref={remoteAudioRef}></audio>
+              <audio autoPlay  ref={remoteAudioRef}></audio>
               {!remoteHasAudio && (
                 <div className="absolute bottom-2 right-2 rounded-2xl px-2 py-1 bg-white text-black/90">
                   <p className="text-center font-semibold text-sm">
